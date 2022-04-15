@@ -14,7 +14,7 @@ from matplotlib import colors as mpl_colors
 import random
 import xml.etree.ElementTree as et
 from pathlib import Path
-from data_processing import data_processing, find_and_replace, data_processing_msa2pdb, load_msa, data_processing_pdb2msa
+from data_processing import data_processing, find_and_replace, load_msa
 from sklearn.metrics import roc_curve as roc_scikit
 from sklearn.metrics import auc, precision_recall_curve
 
