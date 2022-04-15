@@ -11,7 +11,7 @@ import Bio.PDB, warnings
 from Bio.PDB import *
 
 from Bio import BiopythonWarning
-from Bio.pairwise2 import format_alignment
+from Bio.pairwise2 import format_alignment, align
 pdb_parser = Bio.PDB.PDBParser()
 
 from urllib.error import HTTPError
@@ -152,16 +152,18 @@ def pdb2msa(pdb_file, pdb_dir, create_new=True):
 
 def get_tpdb(s, ali_start_indx, ali_end_indx, pfam_start_indx, pfam_end_indx, aligned_pdb_str):
     # Requires DataFrame from data_processing.pdb2msa() function as input
-    from ecc_tools import hamming_distance
+    from tools import hamming_distance
     alignment_len =  ali_end_indx - ali_start_indx + 1
-    print('alignment length: ', alignment_len)
-    print('PDB sequence: (len %d)' % len(aligned_pdb_str), aligned_pdb_str)
+    print('Lets find the reference sequence in this MSA\n...We want index of the MSA sequence which best matches our PDB-polypeptide sequence...?')
+    # print('alignment length: ', alignment_len)
+    print('PDB-polypeptids sequence (len %d):\n%s\n\n' % (len(aligned_pdb_str), aligned_pdb_str))
     #print(alignment_len, len(aligned_pdb_str), aligned_pdb_str)
 
     min_ham = alignment_len
     max_pair_score = 0
     min_indx = -1
     best_alignment = None
+    print("Looping through MSA sequences to find best matching sequence for our MSA reference sequence!")
     for i, seq in enumerate(s):
         gap_seq = seq == '-'  # returns True/False for gaps/no gaps
         subject = seq[~gap_seq]
@@ -171,7 +173,7 @@ def get_tpdb(s, ali_start_indx, ali_end_indx, pfam_start_indx, pfam_end_indx, al
         #   print('length mismatch %d, %d' % (len(aligned_seq_str), alignment_len))
         #   continue
         #ham_dist = hamming_distance(aligned_pdb_str, aligned_seq_str)
-        alignments = pairwise2.align.globalxx(aligned_pdb_str, aligned_seq_str)
+        alignments = align.globalxx(aligned_pdb_str, aligned_seq_str)
         
         if len(alignments) == 0:
             continue
@@ -185,20 +187,18 @@ def get_tpdb(s, ali_start_indx, ali_end_indx, pfam_start_indx, pfam_end_indx, al
             #min_ham = ham_dist
             max_pair_score = pair_score
             min_indx = i
-            print(format_alignment(*alignments[0]))
             best_alignment = alignments[0]
-            print('match upgrade at' , i)
+            print('    ... found a match upgrade at index ' , i)
             #print('%d: hamm dist=%d, pairwise score=%f\n' % (i, ham_dist, pair_score))
-            print('%d: pairwise score=%f\n' % (i, pair_score))
-            print('lengths: ', len(aligned_pdb_str), len(aligned_seq_str))
-            print(best_alignment)
-
-    gap_seq = s[min_indx] == '-'
-    print('best match is sequence %d with hamming distance of %d (length %d)' % (min_indx, min_ham, len(s[min_indx][~gap_seq])))
-    
+            #print('Sequence Alignment: ', best_alignment, '\n\n')
+            print(format_alignment(*alignments[0]))
+ 
     if best_alignment is None:
         print('ERROR could not find alignment with score better than 0..') 
-        
+
+    gap_seq = s[min_indx] == '-'
+    print('Best match is sequence %d\n    Hamming distance of %d (length %d)\n\n' % (min_indx, min_ham, len(s[min_indx][~gap_seq])))
+           
     # get matching seq for both sequences (no gaps in either)
     try:
         aligned_pdb_char_array = np.array([char for char in best_alignment.seqA])
@@ -233,26 +233,24 @@ def get_tpdb(s, ali_start_indx, ali_end_indx, pfam_start_indx, pfam_end_indx, al
 
     # get s_index for mapping msa to pdb sequence.
     pdb_s_index = gap_pdb_index[~aligned_gaps]
-    print('PDB index map: ', len(pdb_s_index), pdb_s_index)
+    # print('PDB index map: ', len(pdb_s_index), pdb_s_index)
     
     # Extract further infor for aligned seqs.
     aligned_pdb_nogap = aligned_pdb_char_array[~aligned_gaps]
     aligned_ref_nogap = aligned_ref_char_array[~aligned_gaps]
-    print('\n aligned PDB and ref seq:')
-    print(len(aligned_pdb_nogap),aligned_pdb_nogap)
-    print(len(aligned_ref_nogap),aligned_ref_nogap)
+    print('\nAligned PDB and ref seq:')
+    print('PDB polypeptide sequence (length %d): ' % len(aligned_pdb_nogap), ''.join(aligned_pdb_nogap))
+    print('MSA-matched sequence     (length %d): ' % len(aligned_ref_nogap), ''.join(aligned_ref_nogap))
     
     # Trim By gaps in Ref seq (tbr). Then Trim By gaps in Pdb seq (tpb)
     s_tbr = s[:, ~gap_seq]
     s_tbr = s_tbr[:,pfam_start_indx : pfam_end_indx+1]
-    print('s_tbr[tpdb] = ', s_tbr[min_indx])
-    print(s_tbr.shape)
+    print('\n\nTrimming MSA by reference sequence (s -> s_tpr)...')
+    print('dimensions of s_tbr:', s_tbr.shape)
+    print('s_tbr[tpdb=%d] = ' % min_indx, ''.join(s_tbr[min_indx]))
     s_tbr_tbp = np.delete(s_tbr, pdb_gap_cols_in_ref, axis=1)
-    print(s_tbr_tbp.shape)
 
     # printed ref seq should be the same as the fully alinged, gapless pdb and ref seqs above.
-    print('MSA trimmed by reference and pdb_sequence: ', len(s_tbr_tbp[min_indx]), s_tbr_tbp[min_indx])
-
     return min_indx, best_alignment, s_tbr_tbp, pdb_s_index
 
 
@@ -480,22 +478,20 @@ def data_processing(data_path, pdb_df,gap_seqs=0.2, gap_cols=0.2, prob_low=0.004
 
 
     print('PDB ID: %s, Pfam ID: %s' % (pdb_id, pfam_id))
-
-    np.random.seed(123456789)
-    print('Because create_new is False and files exist we will load preprocessed data:')
     if remove_cols:
-        s = np.load("%s/%s_%s_preproc_msa.npy" % (out_dir, pfam_id, pdb_id))
-        s_index = np.load("%s/%s_%s_preproc_sindex.npy" % (out_dir, pfam_id, pdb_id))
+        processing_type = "preproc"
+    else:
+        processing_type = "allCols"
+    # if not create_new and os.path.exists("%s/%s_%s_%s_msa.npy" % (out_dir, pfam_id, pdb_id, processing_type)):
+    if 0:
+        print('Because create_new is False and files exist we will load preprocessed data:')
+        s = np.load("%s/%s_%s_%s_msa.npy" % (out_dir, pfam_id, pdb_id, processing_type))
+        s_index = np.load("%s/%s_%s_%s_sindex.npy" % (out_dir, pfam_id, pdb_id, processing_type))
         removed_cols = np.load("%s/%s_%s_removed_cols.npy" % (out_dir, pfam_id, pdb_id))
-        ref_seq = np.load("%s/%s_%s_preproc_refseq.npy" % (out_dir, pfam_id, pdb_id))
-    else: 
-        s = np.load("%s/%s_%s_allCols_msa.npy" % (out_dir, pfam_id, pdb_id))
-        s_index = np.load("%s/%s_%s_allCols_sindex.npy" % (out_dir, pfam_id, pdb_id)) 
-        removed_cols = np.load("%s/%s_%s_removed_cols.npy" % (out_dir, pfam_id, pdb_id))
-        ref_seq = np.load("%s/%s_%s_allCols_refseq.npy" % (out_dir, pfam_id, pdb_id))
+        ref_seq = np.load("%s/%s_%s_%s_refseq.npy" % (out_dir, pfam_id, pdb_id, processing_type))
 
-    if not letter_format and isinstance(s[0][0], str):
-        s = convert_letter2number(s)
+        if not letter_format and isinstance(s[0][0], str):
+            s = convert_letter2number(s)
       
     
     # Load MSA
@@ -516,12 +512,13 @@ def data_processing(data_path, pdb_df,gap_seqs=0.2, gap_cols=0.2, prob_low=0.004
 
     if printing:
         print('MSA index %d matches PDB' % tpdb)
+        print("\n\n#--------------------------------------------------------------#")
+        print("#---------- Begin Pre-Processing MSA --------------------------#")
         print("#--------------------------------------------------------------#\n\n")
 
     if printing:
-        print("#\n\n-------------------------Remove Gaps--------------------------#")
+        print("\n\n#-------------------------Remove Gaps--------------------------#")
         print('Shape of s is : ', s.shape)
-        print("s = \n", s)
     
     # remove gaps to allow alignment with PDB sequence..
     # remove columns not in alignment range
@@ -533,18 +530,18 @@ def data_processing(data_path, pdb_df,gap_seqs=0.2, gap_cols=0.2, prob_low=0.004
 
     if printing:
         print("s[tpdb] shape is ", s[tpdb].shape)
-        print("s = \n", s)
         print("though s still has gaps, s[%d] does not:\n" % (tpdb), s[tpdb])
         print("s shape is ", s.shape)
-        print("Saving indices of reference sequence s[%d](length=%d):\n" % (tpdb, s_index.shape[0]), s_index)
         print("#--------------------------------------------------------------#\n\n")
 
     lower_cols = np.array([i for i in range(s.shape[1]) if s[tpdb, i].islower()])
     if printing:
-        print("removing non aligned (lower case) columns in subject sequence:\n ", lower_cols, '\n')
+        print("removing non aligned (lower case) columns in subject sequence:\n", lower_cols, '\n')
         
 
     # --- remove duplicates before processing (as done in pydca) --- #
+    if printing:
+        print("#--------------------- Removing Duplicate Sequences -----------#")
     dup_rows = []
     s_no_dup = []
     for i, row in enumerate(s):
@@ -556,7 +553,8 @@ def data_processing(data_path, pdb_df,gap_seqs=0.2, gap_cols=0.2, prob_low=0.004
         else:
             s_no_dup.append([a for a in row])
     if printing:
-        print('found %d duplicates! (Removing...)' % len(dup_rows))
+        print('...found %d duplicates! (Removing...)' % len(dup_rows))
+        print("#--------------------------------------------------------------#\n\n")
     s, tpdb = remove_seqs_list(s, tpdb, dup_rows)
     # -------------------------------------------------------------- #
 
@@ -573,7 +571,7 @@ def data_processing(data_path, pdb_df,gap_seqs=0.2, gap_cols=0.2, prob_low=0.004
     # - Finding bad columns (>gap_cols) -------------------- #
     bad_cols = find_bad_cols(s, gap_cols)
     if printing:
-        print('found bad columns :=', bad_cols)
+        print('Found bad columns :=', bad_cols)
     # ------------------------------------------------------ #
 
 
@@ -594,7 +592,7 @@ def data_processing(data_path, pdb_df,gap_seqs=0.2, gap_cols=0.2, prob_low=0.004
     # --------------------- Find Conserved Columns ------------------------------------ #
     conserved_cols = find_conserved_cols(s, conserved_cols)
     if printing:
-        print("found conserved columns (80% repetition):\n", conserved_cols)
+        print("Found conserved columns (80% repetition):\n", conserved_cols)
     # --------------------------------------------------------------------------------- #
 
     
@@ -614,16 +612,21 @@ def data_processing(data_path, pdb_df,gap_seqs=0.2, gap_cols=0.2, prob_low=0.004
 
     if printing and remove_cols:
         print("Removed Columns...")
-        print("s now has shape: ", s.shape)
+        print("Done Pre-Processing MSA")
+        print("#--------------------------------------------------------------#\n\n\n")
+        print("#--------------------------------------------------------------#")
+        print("Final s (MSA) has shape: ", s.shape)
         print("s_index (length=%d) = \n" % s_index.shape[0], s_index)
         print("pdb_s_index (length=%d) = \n" % pdb_s_index.shape[0], pdb_s_index)
-        print("In data processing Ref Seq (shape=", s[tpdb].shape, "): \n", s[tpdb])
+        print("Ref Seq (shape=", s[tpdb].shape, "): \n", s[tpdb])
+        if not letter_format:
+            print('Finishing by converting amino acid letters to equvalent number form')
+        print("#--------------------------------------------------------------#")
 
     # Convert S to number format (number representation of amino acids)
     if not letter_format:
         # convert letter to number:
         s = convert_letter2number(s)
-    print(s)
 
     # replace lower probs by higher probs 
     for i in range(s.shape[1]):
@@ -640,12 +643,5 @@ def data_processing(data_path, pdb_df,gap_seqs=0.2, gap_cols=0.2, prob_low=0.004
         np.save("%s/%s_%s_allCols_msa.npy" % (out_dir, pfam_id, pdb_id), s)
         np.save("%s/%s_%s_allCols_sindex.npy" % (out_dir, pfam_id, pdb_id), s_index)
         np.save("%s/%s_%s_allCols_refseq.npy" % (out_dir, pfam_id, pdb_id), s[tpdb])
-
-
-
-    # - Removing bad sequences (>gap_seqs gaps) -------------------- #
-    if printing:
-        print(s.shape)
-        print("In Data Processing Final Reference Sequence (shape=", s[tpdb].shape, "): \n", s[tpdb])
 
     return [s, removed_cols, s_index, tpdb, pdb_s_index]
