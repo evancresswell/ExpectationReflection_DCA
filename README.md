@@ -16,6 +16,8 @@ Feel free to contact <evancresswell@gmail.com> or <vipulp@niddk.nih.gov > regard
     - PYDCA Enviornment: PDYCA_requirements.txt
 
 ## Table of Contents
+- [Anaconda Environment Setup](#Anaconda-Environment-Setup)
+	- Setting up conda environment for ER and PYDCA simulations
 - [PDB to MSA Mapping](#PDB-to-MSA-Mapping)
 	- Given a PDB structure we find the best matching MSA to infer connections
 - [Expectation Reflection](#Expectation-Reflection)
@@ -85,7 +87,8 @@ foo@bar:~$ singularity exec -B /path/to/er_covid19/biowulf,/path/to/er_covid19/c
 ``` console
 foo@bar:~$  singularity exec -B /path/to/er_covid19/biowulf/,/path/to/er_covid19/covid_proteins /path/to/er_covid19/LADER.simg python get_clades.py /path/to/er_covid19/
 ```
-
+# Anaconda Environment Setup
+[Back to Top](#Table-of-Contents)
 
 # Expectiation Reflection
 [Back to Top](#Table-of-Contents)
